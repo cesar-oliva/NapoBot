@@ -65,7 +65,8 @@ app.post('/order', (req, res) => {
           sessionInfo: {
             parameters: {
               OrderString:myOrder,
-              importeFinal: importeTotal
+              importeFinal: importeTotal,
+              idOrder: newOrder._id
             }
           }
         });
@@ -78,7 +79,7 @@ app.post('/order', (req, res) => {
         let valor_1 = parseFloat(pago.toString());
         let valor_2 = parseFloat(importeTotal.toString());
         if(valor_1>=valor_2){
-          let vuelto = (valor_1 - valor_2).toString();
+          let vuelto = (valor_1 - valor_2);
           res.status(200).send({
             sessionInfo: {
               parameters: {
@@ -92,7 +93,7 @@ app.post('/order', (req, res) => {
           res.status(200).send({
             sessionInfo: {
               parameters: {
-                vuelto: '0',
+                vuelto: -1,
                 response: response
               }
             }
