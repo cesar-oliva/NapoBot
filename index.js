@@ -7,6 +7,7 @@ const Menu = require('./models/Menu')
 const Order = require('./models/Order')
 
 dotenv.config();
+const  ObjectID = require('mongodb').ObjectId;
 
 const app = express();
 app.use(bodyParser.json())
@@ -38,7 +39,7 @@ let cantidad;
 let importeTotal;
 let pago;
 let response;
-
+var myOrder= new Array();
 
 //orden
 app.post('/order', (req, res) => {
@@ -50,16 +51,21 @@ app.post('/order', (req, res) => {
         console.log(req.body.sessionInfo);
         idClient = req.body.sessionInfo.parameters['idClient'];
         idMenu = req.body.sessionInfo.parameters['idMenu'];
+        pizza = req.body.sessionInfo.parameters['pizza'];
         cantidad = req.body.sessionInfo.parameters['cantidad'];
-        importeTotal = req.body.sessionInfo.parameters['importeTotal'];
-       
-        const newOrder = new Order({idClient,idMenu,cantidad,importeTotal}); //guardar un nuevo cliente en Mongo
-        newOrder.save(); //guardar un nuevo cliente en Mongo
-        console.log(newOrder);
+        importe = req.body.sessionInfo.parameters['importeTotal'];
+
+        let orderString = cantidad+" "+pizza+" "+importe;
+        myOrder.push(orderString)
+        importeTotal = importeTotal+importe;
+
+        const newOrder = new Order({idClient,idMenu,cantidad,importe}); 
+        newOrder.save();   
         res.status(200).send({
           sessionInfo: {
             parameters: {
-              idOrder:newOrder._id,
+              OrderString:myOrder,
+              importeFinal: importeTotal
             }
           }
         });
@@ -67,13 +73,12 @@ app.post('/order', (req, res) => {
   
       case 'confirm_pago':
         pago = req.body.sessionInfo.parameters['pay'];
-        importeTotal = req.body.sessionInfo.parameters['importeTotal'];
+        importeFinal = req.body.sessionInfo.parameters['importeFinal'];
         response = 'invalid';
         let valor_1 = parseFloat(pago.toString());
         let valor_2 = parseFloat(importeTotal.toString());
         if(valor_1>=valor_2){
           let vuelto = (valor_1 - valor_2).toString();
-          console.log(vuelto)
           res.status(200).send({
             sessionInfo: {
               parameters: {
@@ -119,8 +124,8 @@ app.post('/menu', (req, res) => {
               sessionInfo: {
                 parameters: {
                   idMenu:item._id,
-                  importe: item.precio,
-                  importeTotal: (parseFloat(item.precio)*parseInt(cantidad)).toString()
+                  importe: parseFloat(item.precio),
+                  importeTotal: (parseFloat(item.precio)*parseInt(cantidad))
                 }
               }
             });
@@ -139,44 +144,46 @@ app.post('/client', (req, res) => {
   let telefono;
   let nombre;
   let estado;
+  let apellido;
   let direccion;
   if (!!tag) {
     switch (tag) {
       case 'verificar_client':
+        clearArray(myOrder);
+        importeTotal = 0;
         console.log(req.body.sessionInfo);
         nombre = req.body.sessionInfo.parameters['given-name'];
+        apellido = req.body.sessionInfo.parameters['last-name'];
         telefono = req.body.sessionInfo.parameters['phone-number'];
         estado = 'invalid';
         //buscar el client
         var a = Client.find({ 
-          telefono: telefono, nombre: nombre
+          "telefono":telefono, nombre:nombre, apellido:apellido
         }, function callback(error, a) {
-          if (a>0) {
-            estado = 'valid'; //si lo encuentra cambia el estado
-            a.forEach(item => {
+          if (a<1){
             res.status(200).send({
               sessionInfo: {
                 parameters: {
                   estado: estado,
-                  address: item.direccion,
-                  idClient:item._id
                 }
               }
             });
-          
+          }
+          else{
+            estado = 'valid'; //si lo encuentra cambia el estado
+            a.forEach(item => {
+              res.status(200).send({
+                sessionInfo: {
+                  parameters: {
+                    estado: estado,
+                    address: item.direccion,
+                    idClient:item._id
+                  }
+                }
+              });
+            });
+          }
         });
-        }
-        else{
-          res.status(200).send({
-            sessionInfo: {
-              parameters: {
-                estado: estado,
-              }
-            }
-          }); 
-        }
-        })
-        
         break;
 
       case 'guardar_client':
@@ -184,25 +191,74 @@ app.post('/client', (req, res) => {
         nombre = req.body.sessionInfo.parameters['given-name'];
         telefono = req.body.sessionInfo.parameters['phone-number'];
         direccion = req.body.sessionInfo.parameters['address'];
-        try {
-          const newClient = new Client({nombre,telefono,direccion}); //guardar un nuevo cliente en Mongo
-          newClient.save(); //guardar un nuevo cliente en Mongo
-          estado='valid';
-          res.status(200).send({
-            sessionInfo: {
-              parameters: {
-                estado: estado,
-                idClient: newClient._id
-              }
+        apellido = req.body.sessionInfo.parameters['last-name'];
+        let update = req.body.sessionInfo.parameters['update'];
+        let id = req.body.sessionInfo.parameters['idClient'];
+        if(update === "true"){
+            console.log(id);
+            console.log(direccion);
+            Client.deleteOne({_id:new  
+              ObjectID(id)}).then(data=>{
+                res.status(200).send({
+                  sessionInfo: {
+                    parameters: {
+                      estado: 'valid',
+                      update:'false',
+                      address: direccion,
+                    }
+                  }
+                });
+            })
+            const newClient = new Client({_id:new ObjectID(id),nombre,apellido,telefono,direccion}); //guardar un nuevo cliente en Mongo
+            newClient.save(); //guardar un nuevo cliente en Mongo   
+        }
+        else{
+          try {
+            //buscar el client
+            var band = false;
+            var a = Client.find({ "telefono":telefono},
+              function callback(error, a) {
+              a.forEach(item => {
+                if (a<1) { 
+                  estado = 'valid'; //si lo encuentra cambia el estado
+                  band = true;
+                  res.status(200).send({
+                    sessionInfo: {
+                      parameters: {
+                        estado: estado,
+                        address: item.direccion,
+                        idClient:item._id
+                      }
+                    }
+                  });
+                }
+              });
+            });
+            if(band==false){
+              const newClient = new Client({nombre,apellido,telefono,direccion}); //guardar un nuevo cliente en Mongo
+              newClient.save(); //guardar un nuevo cliente en Mongo
+              estado='valid';
+              res.status(200).send({
+                sessionInfo: {
+                  parameters: {
+                    estado: estado,
+                    idClient: newClient._id
+                  }
+                }
+              });
             }
-          });
-        } catch (error) {
-          console.log(error)
+          } catch (error) {
+            console.log(error)
+          }
         }
         break;
     }
   }   
 });
-
+function clearArray(array) {
+  while (array.length) {
+    array.pop();
+  }
+}
 app.listen(port, () => console.log(`Example app listening on port ${port}!`));
 
